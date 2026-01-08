@@ -3,13 +3,13 @@ name: CI/CD Flask App to IBM Kubernetes
 on:
   push:
     branches:
-      - main
+      - main   # trigger on main branch, change if needed
 
 env:
   REGISTRY: us.icr.io
-  NAMESPACE: aykhan777123
+  NAMESPACE: aykhan777123   # your IBM CR namespace
   APP_NAME: flask-app
-  K8S_CLUSTER: cheap-k8s
+  K8S_CLUSTER: cheap-k8s     # your cluster name
   IBM_REGION: us-south
 
 jobs:
@@ -17,35 +17,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    # 1. Checkout code
     - name: Checkout code
       uses: actions/checkout@v3
 
+    # 2. Install IBM Cloud CLI
     - name: Install IBM Cloud CLI
       run: |
         curl -fsSL https://clis.cloud.ibm.com/install/linux | sh
         ibmcloud --version
 
-    - name: Install kubectl
+    # 3. Install IBM Cloud plugins
+    - name: Install IBM Cloud plugins
       run: |
+        ibmcloud plugin install container-registry -f
         ibmcloud plugin install container-service -f
-        ibmcloud ks cluster config --cluster $K8S_CLUSTER || true
 
-    - name: Login to IBM Cloud
+    # 4. Login to IBM Cloud & Container Registry
+    - name: IBM Cloud login
       run: |
         ibmcloud login --apikey ${{ secrets.IBM_CLOUD_API_KEY }} -r $IBM_REGION
         ibmcloud cr login
 
+    # 5. Build Docker image and push to IBM CR
     - name: Build and push Docker image
       run: |
         IMAGE_TAG=${GITHUB_SHA::8}  # unique tag from commit SHA
         docker build -t ${REGISTRY}/${NAMESPACE}/flask-demo:$IMAGE_TAG .
         docker push ${REGISTRY}/${NAMESPACE}/flask-demo:$IMAGE_TAG
 
-    - name: Configure kubectl for IKS cluster
+    # 6. Configure kubectl for IKS cluster
+    - name: Configure kubectl
       run: |
         ibmcloud ks cluster config --cluster $K8S_CLUSTER
         kubectl get nodes
 
+    # 7. Update Kubernetes deployment
     - name: Update Kubernetes deployment
       run: |
         IMAGE_TAG=${GITHUB_SHA::8}
