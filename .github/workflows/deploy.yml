@@ -9,7 +9,7 @@ env:
   REGISTRY: us.icr.io
   NAMESPACE: aykhan777123
   APP_NAME: flask-app
-  K8S_CLUSTER: your-cluster-name
+  K8S_CLUSTER: cheap-k8s
   IBM_REGION: us-south
 
 jobs:
@@ -20,14 +20,19 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up IBM Cloud CLI
-      uses: IBM/cloud-actions/setup-ibmcloud@v1
-      with:
-        ibmcloud_api_key: ${{ secrets.IBM_CLOUD_API_KEY }}
-        region: ${{ env.IBM_REGION }}
-
-    - name: Login to IBM Container Registry
+    - name: Install IBM Cloud CLI
       run: |
+        curl -fsSL https://clis.cloud.ibm.com/install/linux | sh
+        ibmcloud --version
+
+    - name: Install kubectl
+      run: |
+        ibmcloud plugin install container-service -f
+        ibmcloud ks cluster config --cluster $K8S_CLUSTER || true
+
+    - name: Login to IBM Cloud
+      run: |
+        ibmcloud login --apikey ${{ secrets.IBM_CLOUD_API_KEY }} -r $IBM_REGION
         ibmcloud cr login
 
     - name: Build and push Docker image
@@ -36,12 +41,14 @@ jobs:
         docker build -t ${REGISTRY}/${NAMESPACE}/flask-demo:$IMAGE_TAG .
         docker push ${REGISTRY}/${NAMESPACE}/flask-demo:$IMAGE_TAG
 
-    - name: Target IKS cluster
+    - name: Configure kubectl for IKS cluster
       run: |
-        ibmcloud ks cluster config --cluster ${{ env.K8S_CLUSTER }}
+        ibmcloud ks cluster config --cluster $K8S_CLUSTER
+        kubectl get nodes
 
     - name: Update Kubernetes deployment
       run: |
+        IMAGE_TAG=${GITHUB_SHA::8}
         kubectl set image deployment/${APP_NAME} ${APP_NAME}=${REGISTRY}/${NAMESPACE}/flask-demo:$IMAGE_TAG
         kubectl rollout status deployment/${APP_NAME}
 
