@@ -1,9 +1,16 @@
-name: Build and Deploy to IBM Cloud Kubernetes
+name: CI/CD Flask App to IBM Kubernetes
 
 on:
   push:
     branches:
       - main
+
+env:
+  REGISTRY: us.icr.io
+  NAMESPACE: aykhan777123
+  APP_NAME: flask-app
+  K8S_CLUSTER: your-cluster-name
+  IBM_REGION: us-south
 
 jobs:
   deploy:
@@ -11,38 +18,30 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
-    - name: Install IBM Cloud CLI
-      run: |
-        curl -fsSL https://clis.cloud.ibm.com/install/linux | sh
-
-    - name: Install Kubernetes plugin
-      run: |
-        ibmcloud plugin install container-service -f
-        ibmcloud plugin install container-registry -f
-
-    - name: Login to IBM Cloud
-      run: |
-        ibmcloud login --apikey ${{ secrets.IBM_CLOUD_API_KEY }} -r ${{ secrets.IBM_REGION }}
+    - name: Set up IBM Cloud CLI
+      uses: IBM/cloud-actions/setup-ibmcloud@v1
+      with:
+        ibmcloud_api_key: ${{ secrets.IBM_CLOUD_API_KEY }}
+        region: ${{ env.IBM_REGION }}
 
     - name: Login to IBM Container Registry
       run: |
         ibmcloud cr login
 
-    - name: Build Docker image
+    - name: Build and push Docker image
       run: |
-        docker build -t us.icr.io/${{ secrets.NAMESPACE }}/flask-demo:latest .
+        IMAGE_TAG=${GITHUB_SHA::8}  # unique tag from commit SHA
+        docker build -t ${REGISTRY}/${NAMESPACE}/flask-demo:$IMAGE_TAG .
+        docker push ${REGISTRY}/${NAMESPACE}/flask-demo:$IMAGE_TAG
 
-    - name: Push Docker image
+    - name: Target IKS cluster
       run: |
-        docker push us.icr.io/${{ secrets.NAMESPACE }}/flask-demo:latest
+        ibmcloud ks cluster config --cluster ${{ env.K8S_CLUSTER }}
 
-    - name: Configure kubectl
+    - name: Update Kubernetes deployment
       run: |
-        ibmcloud ks cluster config --cluster ${{ secrets.IKS_CLUSTER }}
-
-    - name: Restart Kubernetes deployment
-      run: |
-        kubectl rollout restart deployment flask-app
+        kubectl set image deployment/${APP_NAME} ${APP_NAME}=${REGISTRY}/${NAMESPACE}/flask-demo:$IMAGE_TAG
+        kubectl rollout status deployment/${APP_NAME}
 
