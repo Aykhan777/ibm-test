@@ -1,0 +1,48 @@
+name: Build and Deploy to IBM Cloud Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install IBM Cloud CLI
+      run: |
+        curl -fsSL https://clis.cloud.ibm.com/install/linux | sh
+
+    - name: Install Kubernetes plugin
+      run: |
+        ibmcloud plugin install container-service -f
+        ibmcloud plugin install container-registry -f
+
+    - name: Login to IBM Cloud
+      run: |
+        ibmcloud login --apikey ${{ secrets.IBM_CLOUD_API_KEY }} -r ${{ secrets.IBM_REGION }}
+
+    - name: Login to IBM Container Registry
+      run: |
+        ibmcloud cr login
+
+    - name: Build Docker image
+      run: |
+        docker build -t us.icr.io/${{ secrets.NAMESPACE }}/flask-demo:latest .
+
+    - name: Push Docker image
+      run: |
+        docker push us.icr.io/${{ secrets.NAMESPACE }}/flask-demo:latest
+
+    - name: Configure kubectl
+      run: |
+        ibmcloud ks cluster config --cluster ${{ secrets.IKS_CLUSTER }}
+
+    - name: Restart Kubernetes deployment
+      run: |
+        kubectl rollout restart deployment flask-app
+
